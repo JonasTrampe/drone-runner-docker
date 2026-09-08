@@ -1,22 +1,29 @@
-FROM alpine:3 as alpine
-RUN apk add -U --no-cache ca-certificates
+# syntax=docker/dockerfile:1.7
 
-RUN wget https://github.com/tmate-io/tmate/releases/download/2.4.0/tmate-2.4.0-static-linux-amd64.tar.xz
-RUN tar -xf tmate-2.4.0-static-linux-amd64.tar.xz
-RUN mv tmate-2.4.0-static-linux-amd64/tmate /bin/
-RUN chmod +x /bin/tmate
+ARG ALPINE_VERSION=3.23.3
+FROM alpine:${ALPINE_VERSION} AS tmate
 
-FROM alpine:3
+ARG TMATE_VERSION=2.4.0
+ARG TMATE_SHA256=6e503a1a3b0f9117bce6ff7cc30cf61bdc79e9b32d074cf96deb0264e067a60d
+
+RUN set -eux; \
+    apk add --no-cache ca-certificates wget xz; \
+    wget -O tmate.tar.xz "https://github.com/tmate-io/tmate/releases/download/${TMATE_VERSION}/tmate-${TMATE_VERSION}-static-linux-amd64.tar.xz"; \
+    echo "${TMATE_SHA256}  tmate.tar.xz" | sha256sum -c -; \
+    tar -xJf tmate.tar.xz; \
+    install -m 0755 "tmate-${TMATE_VERSION}-static-linux-amd64/tmate" /bin/tmate
+
+FROM alpine:${ALPINE_VERSION}
 EXPOSE 3000
 
 ENV GODEBUG netdns=go
 ENV DRONE_PLATFORM_OS linux
 ENV DRONE_PLATFORM_ARCH amd64
 
-COPY --from=alpine /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=alpine /bin/tmate /bin/
+COPY --from=tmate /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=tmate /bin/tmate /bin/
 
 LABEL com.centurylinklabs.watchtower.stop-signal="SIGINT"
 
-ADD release/linux/amd64/drone-runner-docker /bin/
+COPY --chmod=0755 release/linux/amd64/drone-runner-docker /bin/drone-runner-docker
 ENTRYPOINT ["/bin/drone-runner-docker"]
